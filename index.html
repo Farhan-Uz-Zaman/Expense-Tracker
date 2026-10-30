@@ -72,6 +72,8 @@ th:first-child,td:first-child{background:var(--glass2)}
 .hb{background:rgba(120,125,140,.2)}
 .item,th,td{border-color:rgba(120,125,140,.2)}
 @media(prefers-reduced-transparency:reduce){.card,nav,.seg,.btn.alt,input,select,textarea,th:first-child,td:first-child{-webkit-backdrop-filter:none;backdrop-filter:none}.card,nav{background:var(--solid)}}
+.modal{position:fixed;inset:0;z-index:30;display:flex;align-items:flex-end;justify-content:center;padding:14px;background:rgba(10,15,25,.42);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.modal .card{background:var(--glass2)}
 </style>
 </head>
 <body>
@@ -80,7 +82,7 @@ th:first-child,td:first-child{background:var(--glass2)}
 (function(){
 const DEF=["Food","Rent","Transport","Credit card bill","Utilities","Health","Shopping","Other"],INC=["Salary","Bonus","Other income"],KINDS=["Bank","MFS","Cash","Credit card"],KEY="mymoney-v1";
 let mem={tx:[],cats:DEF.slice(),icats:INC.slice(),accts:[],last:"",snooze:""};
-let accSeg="a",rptSeg="t",tab="add",addType="e",delT=null,delA=null,msg="",lc={e:"Food",i:"Salary"},lastAcc="",lastTo="";
+let accSeg="a",rptSeg="t",debtDir="b",delC=null,edit=null,editMsg="",hq="",hm="",ha="",hc="",yA=0,yB=0,ySame=true,tab="add",addType="e",delT=null,delA=null,msg="",lc={e:"Food",i:"Salary"},lastAcc="",lastTo="";
 let rptYear=new Date().getFullYear(),rptQ=Math.floor(new Date().getMonth()/3);
 const $=i=>document.getElementById(i);
 let storeOk=true;
@@ -99,7 +101,7 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 const qOf=d=>Math.floor((parseInt(d.substr(5,2),10)-1)/3),yOf=d=>parseInt(d.substr(0,4),10);
 const S=a=>a[0]+a[1]+a[2]+a[3];
 function bals(end){const b={};mem.accts.forEach(a=>b[a.name]=a.open||0);
-  mem.tx.forEach(t=>{if(end&&t.date>end)return;if(t.type==="t"){if(t.acc in b)b[t.acc]-=t.amt;if(t.to in b)b[t.to]+=t.amt}else if(t.acc in b)b[t.acc]+=(t.type==="i"||t.type==="b")?t.amt:-t.amt});return b}
+  mem.tx.forEach(t=>{if(end&&t.date>end)return;if(t.type==="t"){if(t.acc in b)b[t.acc]-=t.amt;if(t.to in b)b[t.to]+=t.amt}else if(t.acc in b)b[t.acc]+=(t.type==="i"||t.type==="b"||t.type==="c")?t.amt:-t.amt});return b}
 const opts=(l,sel)=>l.map(c=>`<option${c===sel?" selected":""}>${esc(c)}</option>`).join("");
 const accOpts=(sel,blank)=>(blank?`<option value="">— not specified —</option>`:"")+mem.accts.map(a=>`<option${a.name===sel?" selected":""}>${esc(a.name)}</option>`).join("");
 function tbl(h,rows,tot){let b=rows.map(r=>"<tr>"+r.map(c=>`<td>${c}</td>`).join("")+"</tr>").join("");
@@ -108,20 +110,22 @@ function tbl(h,rows,tot){let b=rows.map(r=>"<tr>"+r.map(c=>`<td>${c}</td>`).join
 function nr(label,a){const r=[esc(label),...a.map(f0),`<b>${f0(S(a))}</b>`];r._v=[...a,S(a)];return r}
 function grp(l,key){const m={};l.forEach(t=>{const k=key(t);(m[k]=m[k]||[0,0,0,0])[qOf(t.date)]+=t.amt});return Object.keys(m).sort((a,b)=>S(m[b])-S(m[a])).map(k=>nr(k,m[k]))}
 const ymd=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
-function loans(){const L={};mem.tx.forEach(t=>{if(t.type==="b")L[t.loan]={id:t.loan,who:t.cat,amt:t.amt,date:t.date,remind:t.remind||"",paid:0}});mem.tx.forEach(t=>{if(t.type==="r"&&L[t.loan])L[t.loan].paid+=t.amt});return Object.values(L).map(l=>(l.out=Math.max(0,l.amt-l.paid),l))}
+function loans(k){k=k||"b";const out=k==="l"?"c":"r",L={};mem.tx.forEach(t=>{if(t.type===k)L[t.loan]={id:t.loan,who:t.cat,amt:t.amt,date:t.date,remind:t.remind||"",paid:0}});mem.tx.forEach(t=>{if(t.type===out&&L[t.loan])L[t.loan].paid+=t.amt});return Object.values(L).map(l=>(l.out=Math.max(0,l.amt-l.paid),l))}
 function notices(){let h="";
   if(!storeOk)h+=`<div class="card" style="border-color:var(--up)"><b class="bad">Storage problem</b><div class="mu">This browser isn't keeping your data. Open the app from its Home Screen icon and save a CSV backup now.</div></div>`;
   if(navigator.standalone===false&&!mem.tipOff)h+=`<div class="card"><b>Install it for safekeeping</b><div class="mu">Tap Share, then "Add to Home Screen", and always open it from that icon. iPhone keeps an installed app's data far more reliably than a browser tab. Don't delete the icon, as that deletes the data.</div><button class="btn alt" id="tipx">Got it</button></div>`;
   const old=!mem.last||(Date.now()-new Date(mem.last).getTime())/864e5>30;
   if(mem.tx.length>=10&&old)h+=`<div class="card"><b>Time for a backup</b><div class="mu">${mem.last?"Your last backup was on "+esc(mem.last)+".":"You haven't backed up yet."} Save a CSV to Files or Google Drive.</div><button class="btn alt" id="bkn">Back up now</button></div>`;
   return h}
-function banner(){const n=today();if(mem.snooze===n)return"";const a=loans().filter(l=>l.out>0.005&&l.remind&&n>=l.remind);if(!a.length)return"";
-  return`<div class="card" style="border-color:var(--up)"><b class="bad">Time to repay</b>${a.map(l=>`<div class="item"><div>${esc(l.who)}</div><b>${fmt(l.out)}</b></div>`).join("")}<div class="row"><button class="btn alt" id="snz">Remind me tomorrow</button><button class="btn" id="gd">Open debts</button></div></div>`}
+function banner(){const n=today();if(mem.snooze===n)return"";const due=k=>loans(k).filter(l=>l.out>0.005&&l.remind&&n>=l.remind),a=due("b"),c=due("l");if(!a.length&&!c.length)return"";
+  const blk=(t,cl,l)=>l.length?`<b class="${cl}">${t}</b>${l.map(x=>`<div class="item"><div>${esc(x.who)}</div><b>${fmt(x.out)}</b></div>`).join("")}`:"";
+  return`<div class="card" style="border-color:var(--up)">${blk("Time to repay","bad",a)}${blk("Time to collect","ok",c)}<div class="row"><button class="btn alt" id="snz">Remind me tomorrow</button><button class="btn" id="gd">Open debts</button></div></div>`}
 function vDebt(){
-  const L=loans(),act=L.filter(l=>l.out>0.005).sort((a,b)=>a.remind<b.remind?-1:1),done=L.filter(l=>l.out<=0.005),tot=act.reduce((x,l)=>x+l.out,0),nm=new Date(),nx=ymd(new Date(nm.getFullYear(),nm.getMonth()+1,1));
-  let h=`<div class="card"><h2>Money I owe</h2>`+(act.length?act.map(l=>`<div class="item"><div class="l"><div class="n">${esc(l.who)}</div><div class="mu">borrowed ${l.date}${l.remind?" · remind from "+l.remind:""}</div></div><div style="text-align:right"><b class="bad">${fmt(l.out)}</b><div class="mu">of ${fmt(l.amt)}</div></div></div>`).join("")+`<div class="item"><b>Total owed</b><b>${fmt(tot)}</b></div>`:'<div class="mu">Nothing owed right now.</div>')+`<div id="m" class="mu" style="margin-top:8px">${esc(msg)}</div></div>
-<div class="card"><h2>Borrow money</h2><label>Borrowed from</label><input id="bw" type="text" placeholder="e.g. Mom"><label>Amount</label><input id="ba" type="number" inputmode="decimal" step="any"><label>Money received into</label><select id="bacc">${accOpts(lastAcc)}</select><label>Date</label><input id="bd" type="date" value="${today()}"><label>Start reminding me to repay on</label><input id="br" type="date" value="${nx}"><div class="mu" style="margin-top:6px">The account balance goes up, but it isn't counted as income. Reminders show in this app every day you open it, from that date until it's repaid. For a real phone alert, also add a daily repeating item in the iPhone Reminders app.</div><button class="btn" id="bb">Record borrowing</button></div>`;
-  if(act.length)h+=`<div class="card"><h2>Repay</h2><label>Who</label><select id="rl">${act.map(l=>`<option value="${esc(l.id)}">${esc(l.who)} · ${fmt(l.out)} left</option>`).join("")}</select><label>Amount (leave blank to repay in full)</label><input id="ra" type="number" inputmode="decimal" step="any"><label>Paid from</label><select id="racc">${accOpts(lastAcc)}</select><label>Date</label><input id="rd" type="date" value="${today()}"><button class="btn" id="rb">Record repayment</button></div>`;
+  const k=debtDir,B=k==="b",L=loans(k),act=L.filter(l=>l.out>0.005).sort((a,b)=>a.remind<b.remind?-1:1),done=L.filter(l=>l.out<=0.005),tot=act.reduce((x,l)=>x+l.out,0),nm=new Date(),nx=ymd(new Date(nm.getFullYear(),nm.getMonth()+1,1));
+  const T=B?{h:"Money I owe",none:"Nothing owed right now.",tot:"Total owed",verb:"borrowed",who:"Borrowed from",ph:"Mom",add:"Borrow money",acc:"Money received into",rem:"Start reminding me to repay on",btn:"Record borrowing",rep:"Repay",repAcc:"Paid from",repBtn:"Record repayment",amtL:"Amount (leave blank to repay in full)",note:"The account balance goes up, but it isn't counted as income. "}:{h:"Money owed to me",none:"Nobody owes you right now.",tot:"Total owed to you",verb:"lent",who:"Lent to",ph:"Rahim",add:"Lend money",acc:"Paid from account",rem:"Start reminding me to collect on",btn:"Record lending",rep:"Collect repayment",repAcc:"Received into",repBtn:"Record collection",amtL:"Amount (leave blank to collect in full)",note:"The account balance goes down, but it isn't counted as spending. "};
+  let h=seg("q",[["b","I owe"],["l","Owed to me"]],k)+`<div class="card"><h2>${T.h}</h2>`+(act.length?act.map(l=>`<div class="item"><div class="l"><div class="n">${esc(l.who)}</div><div class="mu">${T.verb} ${l.date}${l.remind?" · remind from "+l.remind:""}</div></div><div style="text-align:right"><b class="${B?"bad":"ok"}">${fmt(l.out)}</b><div class="mu">of ${fmt(l.amt)}</div></div></div>`).join("")+`<div class="item"><b>${T.tot}</b><b>${fmt(tot)}</b></div>`:`<div class="mu">${T.none}</div>`)+`<div id="m" class="mu" style="margin-top:8px">${esc(msg)}</div></div>
+<div class="card"><h2>${T.add}</h2><label>${T.who}</label><input id="bw" type="text" placeholder="e.g. ${T.ph}"><label>Amount</label><input id="ba" type="number" inputmode="decimal" step="any"><label>${T.acc}</label><select id="bacc">${accOpts(lastAcc)}</select><label>Date</label><input id="bd" type="date" value="${today()}"><label>${T.rem}</label><input id="br" type="date" value="${nx}"><div class="mu" style="margin-top:6px">${T.note}Reminders show in this app every day you open it, from that date until it's settled. For a real phone alert, also add a daily repeating item in the iPhone Reminders app.</div><button class="btn" id="bb">${T.btn}</button></div>`;
+  if(act.length)h+=`<div class="card"><h2>${T.rep}</h2><label>Who</label><select id="rl">${act.map(l=>`<option value="${esc(l.id)}">${esc(l.who)} · ${fmt(l.out)} left</option>`).join("")}</select><label>${T.amtL}</label><input id="ra" type="number" inputmode="decimal" step="any"><label>${T.repAcc}</label><select id="racc">${accOpts(lastAcc)}</select><label>Date</label><input id="rd" type="date" value="${today()}"><button class="btn" id="rb">${T.repBtn}</button></div>`;
   if(done.length)h+=`<div class="card"><h2>Cleared</h2>${done.map(l=>`<div class="item"><div>${esc(l.who)}</div><div class="mu">${fmt(l.amt)} · ${l.date}</div></div>`).join("")}</div>`;
   return h}
 let chN=6,chCat="",chM="";
@@ -160,11 +164,28 @@ function vCharts(){
 const IC={add:'<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',rep:'<path d="M5 20V11M12 20V5M19 20v-6"/>',hist:'<path d="M4 6h16M4 12h16M4 18h10"/>',acc:'<rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10.5h18"/>',bak:'<path d="M12 4v10m0 0l-4-4m4 4l4-4M5 19h14"/>'};
 const tabs=[["add","Add"],["rep","Reports"],["hist","History"],["acc","Accounts"],["bak","Backup"]],TT={add:"My Money",rep:"Reports",hist:"History",acc:"Accounts",bak:"Backup"};
 const seg=(a,items,cur)=>`<div class="seg">${items.map(x=>`<button data-${a}="${x[0]}" class="${x[0]===cur?"on":""}">${x[1]}</button>`).join("")}</div>`;
-const vRepTab=()=>seg("r",[["t","Trends"],["q","Quarterly"]],rptSeg)+(rptSeg==="t"?vCharts():vRep());
-const vAccTab=()=>seg("s",[["a","Accounts"],["d","Debts"]],accSeg)+(accSeg==="a"?vAcc():vDebt());
+const S12=a=>a.reduce((x,y)=>x+y,0);
+function vYoY(){
+  const ys=[...new Set(mem.tx.filter(t=>t.type==="e"||t.type==="i").map(t=>yOf(t.date)))].sort((a,b)=>b-a);
+  if(ys.length<2)return`<div class="card"><h2>Year vs year</h2><div class="mu">This view needs entries from at least two different years. Once you have them, it compares them month by month and category by category.</div></div>`;
+  if(!ys.includes(yA))yA=ys[0];if(!ys.includes(yB)||yB===yA)yB=ys.find(y=>y!==yA);
+  const now=new Date(),cur=[yA,yB].includes(now.getFullYear()),M=ySame&&cur?now.getMonth()+1:12,mi=t=>parseInt(t.date.substr(5,2),10)-1;
+  const get=(y,ty)=>{const m=new Array(12).fill(0);mem.tx.forEach(t=>{if(t.type===ty&&yOf(t.date)===y&&mi(t)<M)m[mi(t)]+=t.amt});return m};
+  const cat=y=>{const r={};mem.tx.forEach(t=>{if(t.type==="e"&&yOf(t.date)===y&&mi(t)<M)r[t.cat]=(r[t.cat]||0)+t.amt});return r};
+  const sA=get(yA,"e"),sB=get(yB,"e"),eA=S12(sA),eB=S12(sB),inA=S12(get(yA,"i")),inB=S12(get(yB,"i"));
+  const ch=(a,b,good)=>{const d=a-b;return`<td class="${d===0?"":(d>0)===!!good?"ok":"bad"}">${d>0?"+":""}${fmt(d)}${b?" ("+Math.round(d/b*100)+"%)":""}</td>`};
+  const rw=(l,a,b,good)=>`<tr><td>${esc(l)}</td><td>${fmt(b)}</td><td>${fmt(a)}</td>${ch(a,b,good)}</tr>`;
+  const cA=cat(yA),cB=cat(yB),keys=Object.keys(Object.assign({},cA,cB)).sort((x,z)=>Math.max(cA[z]||0,cB[z]||0)-Math.max(cA[x]||0,cB[x]||0));
+  const rate=(i,e)=>i?Math.round((i-e)/i*100)+"%":"–",per=M<12?"Jan–"+MN[M-1]:"full year",H=`<tr><th></th><th>${yB}</th><th>${yA}</th><th>Change</th></tr>`;
+  return`<div class="card"><h2>Year vs year</h2><div class="row"><select id="yya">${opts(ys.map(String),String(yA))}</select><select id="yyb">${opts(ys.filter(y=>y!==yA).map(String),String(yB))}</select></div><select id="yys" style="margin-top:8px"><option value="1"${ySame?" selected":""}>Same months only (when a year is in progress)</option><option value="0"${ySame?"":" selected"}>Full years</option></select><div class="mu" style="margin-top:6px">Comparing ${yA} with ${yB}, ${per}.</div>
+<div class="scroll"><table>${H}${rw("Income",inA,inB,1)}${rw("Spent",eA,eB,0)}${rw("Left over",inA-eA,inB-eB,1)}<tr><td>Saved</td><td>${rate(inB,eB)}</td><td>${rate(inA,eA)}</td><td></td></tr></table></div></div>
+<div class="card"><h2>Spending by month</h2>${chart("bar",MN.slice(0,M),[{n:String(yA),c:PAL[0],v:sA.slice(0,M)},{n:String(yB),c:PAL[7],v:sB.slice(0,M)}])}</div>
+<div class="card"><h2>Spending by category</h2><div class="scroll"><table>${H}${keys.map(c=>rw(c,cA[c]||0,cB[c]||0,0)).join("")}</table></div></div>`}
+const vRepTab=()=>seg("r",[["t","Trends"],["q","Quarterly"],["y","Years"]],rptSeg)+(rptSeg==="t"?vCharts():rptSeg==="q"?vRep():vYoY());
+const vAccTab=()=>seg("s",[["a","Accounts"],["d","Debts"],["c","Categories"]],accSeg)+(accSeg==="a"?vAcc():accSeg==="d"?vDebt():vCats());
 function render(){const n=$("nav");n.innerHTML="";
   tabs.forEach(t=>{const b=document.createElement("button");b.innerHTML=`<svg viewBox="0 0 24 24">${IC[t[0]]}</svg><span>${t[1]}</span>`;if(t[0]===tab)b.className="on";b.onclick=()=>{tab=t[0];delT=delA=null;msg="";render();window.scrollTo(0,0)};n.appendChild(b)});
-  $("view").innerHTML=`<h1 class="ttl">${TT[tab]}</h1>`+notices()+banner()+{add:vAdd,rep:vRepTab,hist:vHist,acc:vAccTab,bak:vBak}[tab]();bind()}
+  $("view").innerHTML=`<h1 class="ttl">${TT[tab]}</h1>`+notices()+banner()+{add:vAdd,rep:vRepTab,hist:vHist,acc:vAccTab,bak:vBak}[tab]()+editModal();document.body.style.overflow=edit?"hidden":"";bind()}
 function vAdd(){
   const mo=today().substr(0,7);let i=0,e=0;mem.tx.forEach(t=>{if(t.date.substr(0,7)===mo){if(t.type==="i")i+=t.amt;if(t.type==="e")e+=t.amt}});
   const T=addType,seg=[["e","Expense"],["i","Income"],["t","Transfer"]].map(x=>`<button data-t="${x[0]}" class="${x[0]===T?"on":""}">${x[1]}</button>`).join("");
@@ -195,15 +216,58 @@ function vRep(){
   let tn=0,tp=0,rows=keys.map(c=>{tn+=a[c]||0;tp+=b[c]||0;return`<tr>${cr(c,a[c]||0,b[c]||0)}</tr>`}).join("");
   h+=`<div class="card"><h2>Quarter vs previous quarter</h2><select id="rq">${["Q1","Q2","Q3","Q4"].map((x,i)=>`<option value="${i}"${i===rptQ?" selected":""}>${x} ${Y}</option>`).join("")}</select><div class="mu" style="margin-top:6px">compared with Q${pq+1} ${py} · red = spent more</div><div class="scroll"><table><tr><th>Category</th><th>Now</th><th>Before</th><th>Change</th></tr>${rows}<tr class="tot">${cr("Total",tn,tp)}</tr></table></div></div>`;
   return h+`<div class="mu" style="padding:0 4px">Calendar quarters (Jan–Mar, etc.). Transfers are excluded everywhere.</div>`}
+const txLabel=t=>t.type==="t"?"Transfer":t.type==="b"?"Borrowed from "+t.cat:t.type==="r"?"Repaid "+t.cat:t.type==="l"?"Lent to "+t.cat:t.type==="c"?"Received from "+t.cat:t.cat;
+function histFilter(){const q=hq.trim().toLowerCase();return mem.tx.filter(t=>{
+  if(hm&&t.date.substr(0,7)!==hm)return false;
+  if(ha&&t.acc!==ha&&t.to!==ha)return false;
+  if(hc){if(hc==="~t"){if(t.type!=="t")return false}else if(hc==="~d"){if(!"brlc".includes(t.type))return false}else if(t.cat!==hc)return false}
+  if(q&&!([txLabel(t),t.note||"",t.acc||"",t.to||"",t.amt,t.date].join(" ").toLowerCase().includes(q)))return false;
+  return true}).sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:b.id-a.id)}
+function histRow(t){const w=(t.acc||"no account")+(t.type==="t"?" → "+t.to:""),pos="ibc".includes(t.type),c=pos?"ok":t.type==="t"?"mu":"";
+  return`<div class="item"><div class="l"><div class="n">${esc(txLabel(t))}${t.note?" · "+esc(t.note):""}</div><div class="mu">${t.date} · ${esc(w)}</div></div><div><b class="${c}">${pos?"+":""}${fmt(t.amt)}</b> <button data-e="${t.id}">Edit</button> <button data-d="${t.id}">${delT===t.id?"Sure?":"Delete"}</button></div></div>`}
+function histList(){const l=histFilter();let e=0,i=0;l.forEach(t=>{if(t.type==="e")e+=t.amt;if(t.type==="i")i+=t.amt});
+  return`<div class="mu" style="margin:0 0 6px">${l.length} of ${mem.tx.length} entries${l.length?" · spent "+fmt(e)+(i?" · income "+fmt(i):""):""}${l.length>300?" · showing the newest 300":""}</div>`+(l.length?l.slice(0,300).map(histRow).join(""):'<div class="mu">No matching entries.</div>')}
 function vHist(){
-  const l=mem.tx.slice().sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:b.id-a.id).slice(0,150);
-  if(!l.length)return'<div class="card mu">Nothing logged yet.</div>';
-  return`<div class="card"><h2>Recent (${mem.tx.length} total)</h2>${msg?`<div class="mu bad">${esc(msg)}</div>`:""}`+l.map(t=>{
-    const w=(t.acc||"no account")+(t.type==="t"?" → "+t.to:""),c=t.type==="i"||t.type==="b"?"ok":t.type==="t"?"mu":"";
-    return`<div class="item"><div class="l"><div class="n">${t.type==="t"?"Transfer":t.type==="b"?"Borrowed from "+esc(t.cat):t.type==="r"?"Repaid "+esc(t.cat):esc(t.cat)}${t.note?" · "+esc(t.note):""}</div><div class="mu">${t.date} · ${esc(w)}</div></div><div><b class="${c}">${t.type==="i"||t.type==="b"?"+":""}${fmt(t.amt)}</b> <button data-d="${t.id}">${delT===t.id?"Sure?":"Delete"}</button></div></div>`}).join("")+"</div>"}
+  if(!mem.tx.length)return'<div class="card mu">Nothing logged yet.</div>';
+  const ms=[...new Set(mem.tx.map(t=>t.date.substr(0,7)))].sort().reverse(),cats=[...new Set(mem.cats.concat(mem.icats))],sel=(v,x)=>v===x?" selected":"";
+  return`<div class="card"><input id="hq" type="search" placeholder="Search note, category, account, amount…" value="${esc(hq)}"><div class="row" style="margin-top:8px"><select id="hm"><option value="">All months</option>${mopt(ms,hm)}</select><select id="ha"><option value="">All accounts</option>${opts(mem.accts.map(a=>a.name),ha)}</select></div><select id="hc" style="margin-top:8px"><option value="">All categories</option><option value="~t"${sel(hc,"~t")}>Transfers only</option><option value="~d"${sel(hc,"~d")}>Loans &amp; debts only</option>${opts(cats,hc)}</select>${msg?`<div class="mu bad" style="margin-top:8px">${esc(msg)}</div>`:""}</div><div class="card"><div id="hlist">${histList()}</div></div>`}
+function bindHist(){
+  document.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{const id=parseFloat(b.dataset.d),tx=mem.tx.find(t=>t.id===id);
+    if(tx&&(tx.type==="b"||tx.type==="l")&&mem.tx.some(t=>(t.type==="r"||t.type==="c")&&t.loan===tx.loan)){delT=null;msg="Delete the payments on that loan first.";return render()}
+    if(delT===id){mem.tx=mem.tx.filter(t=>t.id!==id);delT=null;msg="";save()}else delT=id;render()});
+  document.querySelectorAll("[data-e]").forEach(b=>b.onclick=()=>{edit={k:"tx",id:parseFloat(b.dataset.e)};editMsg="";render()})}
+function vCats(){const n=(c,t)=>mem.tx.filter(x=>x.type===t&&x.cat===c).length;
+  const sec=(t,L,title)=>`<div class="card"><h2>${title}</h2>`+L.map(c=>`<div class="item"><div class="n">${esc(c)}</div><div><span class="mu">${n(c,t)} entries</span> <button data-c="${t}|${esc(c)}">Rename</button> <button data-cd="${t}|${esc(c)}">${delC===t+"|"+c?"Sure?":"Delete"}</button></div></div>`).join("")+`</div>`;
+  return sec("e",mem.cats,"Expense categories")+sec("i",mem.icats,"Income categories")+`<div id="m" class="mu" style="margin:8px 4px">${esc(msg)}</div><div class="mu" style="padding:0 4px">Add new categories from the Add tab. Renaming to a name that already exists merges the two.</div>`}
+function editModal(){if(!edit)return"";let t,body="",title="Edit entry";
+  const F=(l,x)=>`<label>${l}</label>${x}`,inp=(id,v,ty,ex)=>`<input id="${id}" type="${ty||"text"}" value="${esc(v)}" ${ex||""}>`,dec='inputmode="decimal" step="any"';
+  if(edit.k==="tx"){t=mem.tx.find(x=>x.id===edit.id);if(!t){edit=null;return""}
+    const T=t.type,num=F("Amount",inp("ea",t.amt,"number",dec)),dn=F("Date",inp("ed",t.date,"date"))+F("Note",inp("en",t.note||""));
+    if("brlc".includes(T)){const main=T==="b"||T==="l";body=(main?F(T==="b"?"Borrowed from":"Lent to",inp("ew",t.cat)):`<div class="mu">${T==="r"?"Repayment to":"Received from"} ${esc(t.cat)}</div>`)+num+F("Account",`<select id="eacc">${accOpts(t.acc,1)}</select>`)+(main?F("Remind me from",inp("er",t.remind||"","date")):"")+dn}
+    else if(T==="t"){title="Edit transfer";body=num+F("From",`<select id="eacc">${accOpts(t.acc)}</select>`)+F("To",`<select id="eto">${accOpts(t.to)}</select>`)+dn}
+    else{const L=(T==="i"?mem.icats:mem.cats).slice();if(!L.includes(t.cat))L.push(t.cat);body=num+F(T==="i"?"Into account":"Paid from account",`<select id="eacc">${accOpts(t.acc,1)}</select>`)+F("Category",`<select id="ecat">${opts(L,t.cat)}</select>`)+dn}}
+  else if(edit.k==="acc"){const a=mem.accts.find(x=>x.name===edit.name);if(!a){edit=null;return""}title="Edit account";body=F("Name",inp("ean",a.name))+F("Type",`<select id="eak">${opts(KINDS,a.kind)}</select>`)+F("Starting balance",inp("eao",a.open||0,"number",dec))+`<div class="mu" style="margin-top:6px">Renaming updates every entry that uses this account. Changing the starting balance shifts today's balance by the same amount.</div>`}
+  else{title="Rename category";body=F("Name",inp("ecn",edit.name))+`<div class="mu" style="margin-top:6px">Every entry using it is updated. If the new name already exists, the two are merged.</div>`}
+  return`<div class="modal"><div class="card" style="width:100%;max-width:520px;max-height:88vh;overflow:auto"><h2>${title}</h2>${body}<div id="em" class="mu bad" style="margin-top:8px">${esc(editMsg)}</div><div class="row"><button class="btn alt" data-x="cancel">Cancel</button><button class="btn" data-x="save">Save</button></div></div></div>`}
+function saveEdit(){const bad=m=>{editMsg=m;const e=$("em");if(e)e.textContent=m};
+  if(edit.k==="tx"){const t=mem.tx.find(x=>x.id===edit.id),T=t.type,a=parseFloat($("ea").value),d=$("ed").value,acc=$("eacc").value;
+    if(!isFinite(a)||a<=0)return bad("Enter an amount.");if(!d)return bad("Pick a date.");
+    if(T==="t"){const to=$("eto").value;if(!acc||!to||acc===to)return bad("Pick two different accounts.");t.to=to}
+    if("brlc".includes(T)){const k=(T==="b"||T==="r")?"b":"l",main=mem.tx.find(x=>x.type===k&&x.loan===t.loan),paid=mem.tx.filter(x=>x.type===(k==="b"?"r":"c")&&x.loan===t.loan&&x!==t).reduce((s,x)=>s+x.amt,0);
+      if(T===k){if(a<paid-0.005)return bad("That's less than the "+fmt(paid)+" already settled.");const w=$("ew").value.trim();if(!w)return bad("Enter a name.");mem.tx.forEach(x=>{if(x.loan===t.loan)x.cat=w});t.remind=$("er").value}
+      else if(main&&a>main.amt-paid+0.005)return bad("That's more than the "+fmt(main.amt-paid)+" still outstanding.")}
+    if(T==="e"||T==="i")t.cat=$("ecat").value;
+    t.amt=a;t.date=d;t.acc=acc;t.note=$("en").value.trim()}
+  else if(edit.k==="acc"){const a=mem.accts.find(x=>x.name===edit.name),n=$("ean").value.trim(),o=parseFloat($("eao").value)||0;
+    if(!n)return bad("Enter a name.");if(n!==a.name&&mem.accts.some(x=>x.name===n))return bad("That name already exists.");
+    mem.tx.forEach(x=>{if(x.acc===a.name)x.acc=n;if(x.to===a.name)x.to=n});if(lastAcc===a.name)lastAcc=n;if(lastTo===a.name)lastTo=n;a.name=n;a.kind=$("eak").value;a.open=o}
+  else{const n=$("ecn").value.trim(),L=edit.t==="i"?mem.icats:mem.cats;if(!n)return bad("Enter a name.");
+    mem.tx.forEach(x=>{if(x.type===edit.t&&x.cat===edit.name)x.cat=n});
+    const i=L.indexOf(edit.name);if(L.includes(n)&&n!==edit.name)L.splice(i,1);else L[i]=n;if(lc[edit.t]===edit.name)lc[edit.t]=n}
+  edit=null;editMsg="";msg="";save();render()}
 function vAcc(){
   const b=bals();let tot=0;
-  const l=mem.accts.map(a=>{tot+=b[a.name];return`<div class="item"><div class="l"><div class="n">${esc(a.name)}</div><div class="mu">${a.kind}${a.kind==="Credit card"?" (negative = you owe)":""}</div></div><div><b class="${b[a.name]<0?"bad":""}">${fmt(b[a.name])}</b> <button data-a="${esc(a.name)}">${delA===a.name?"Sure?":"Delete"}</button></div></div>`}).join("");
+  const l=mem.accts.map(a=>{tot+=b[a.name];return`<div class="item"><div class="l"><div class="n">${esc(a.name)}</div><div class="mu">${a.kind}${a.kind==="Credit card"?" (negative = you owe)":""}</div></div><div><b class="${b[a.name]<0?"bad":""}">${fmt(b[a.name])}</b> <button data-ea="${esc(a.name)}">Edit</button> <button data-a="${esc(a.name)}">${delA===a.name?"Sure?":"Delete"}</button></div></div>`}).join("");
   return`<div class="card"><h2>Accounts</h2>${l||'<div class="mu">No accounts yet. Add your first below.</div>'}${l?`<div class="item"><b>Total</b><b>${fmt(tot)}</b></div>`:""}<div id="m" class="mu" style="margin-top:8px">${esc(msg)}</div></div>
 <div class="card"><h2>Add account</h2><label>Name</label><input id="an" type="text" placeholder="e.g. Bank A, MFS A, Card X"><label>Type</label><select id="ak">${opts(KINDS,"Bank")}</select><label>Balance when you start logging (credit card: what you owe, as a negative number)</label><input id="ao" type="number" inputmode="decimal" step="any" placeholder="0"><button class="btn" id="aab">Add account</button></div>`}
 function vBak(){
@@ -211,7 +275,7 @@ function vBak(){
 <div class="card"><h2>Import CSV</h2><p class="mu">Exact duplicates are skipped, so importing twice is safe. Older backups from this app also work.</p><input id="file" type="file" accept=".csv,text/csv,text/plain"><label>…or paste CSV text</label><textarea id="paste" rows="4"></textarea><button class="btn" id="imp">Import</button></div><div id="m" class="mu" style="margin:8px 4px">${esc(msg)}</div>`}
 function setMsg(t){msg=t;const m=$("m");if(m)m.textContent=t}
 const q=c=>/[",\n\r]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c;
-const TN={e:"expense",i:"income",t:"transfer",b:"borrow",r:"repay"};
+const TN={e:"expense",i:"income",t:"transfer",b:"borrow",r:"repay",l:"lend",c:"collect"};
 function toCSV(){return["date,type,account,to_account,category,amount,note,loan,remind_from"].concat(
   mem.accts.map(a=>["","account",q(a.name),"",a.kind,a.open||0,"","",""].join(",")),
   mem.tx.slice().sort((a,b)=>a.date<b.date?-1:1).map(t=>[t.date,TN[t.type],q(t.acc||""),q(t.to||""),q(t.cat||""),t.amt,q(t.note||""),t.loan||"",t.remind||""].join(","))).join("\n")}
@@ -231,8 +295,8 @@ function doImport(text){
   let add=0,skip=0,bad=0;
   rows.slice(1).forEach(r=>{const ty=g(r,ti).toLowerCase()||"expense",a=parseFloat(r[ai]);
     if(ty==="account"){ensureAcc(g(r,ki),g(r,ci),isFinite(a)?a:0);return}
-    const d=g(r,di),c=g(r,ci),type={income:"i",transfer:"t",borrow:"b",repay:"r"}[ty]||"e";
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||!isFinite(a)||(type!=="t"&&!c)||((type==="b"||type==="r")&&!g(r,li))){bad++;return}
+    const d=g(r,di),c=g(r,ci),type={income:"i",transfer:"t",borrow:"b",repay:"r",lend:"l",collect:"c"}[ty]||"e";
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||!isFinite(a)||(type!=="t"&&!c)||("brlc".includes(type)&&!g(r,li))){bad++;return}
     const t={id:Date.now()+add+Math.random(),date:d,type,acc:g(r,ki),to:g(r,oi),cat:type==="t"?"":c,amt:a,note:g(r,ni),loan:g(r,li),remind:g(r,ri)},k=key(t);
     if(seen[k]){skip++;return}seen[k]=1;
     ensureAcc(t.acc);ensureAcc(t.to);
@@ -251,8 +315,7 @@ function bind(){
   if($("ncb"))$("ncb").onclick=()=>{const v=$("nc").value.trim(),L=addType==="i"?mem.icats:mem.cats;if(v&&!L.includes(v)){L.push(v);lc[addType]=v;save();msg="Category added.";render()}};
   if($("ry"))$("ry").onchange=function(){rptYear=parseInt(this.value,10);render()};
   if($("rq"))$("rq").onchange=function(){rptQ=parseInt(this.value,10);render()};
-  document.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{const id=parseFloat(b.dataset.d);const tx=mem.tx.find(t=>t.id===id);if(tx&&tx.type==="b"&&mem.tx.some(t=>t.type==="r"&&t.loan===tx.loan)){delT=null;msg="Delete the repayments of that loan first.";return render()}
-    if(delT===id){mem.tx=mem.tx.filter(t=>t.id!==id);delT=null;save()}else delT=id;render()});
+  bindHist();
   document.querySelectorAll("[data-a]").forEach(b=>b.onclick=()=>{const n=b.dataset.a;
     if(mem.tx.some(t=>t.acc===n||t.to===n)){delA=null;msg="That account has entries, so it can't be deleted.";return render()}
     if(delA===n){mem.accts=mem.accts.filter(a=>a.name!==n);delA=null;save()}else delA=n;render()});
@@ -268,12 +331,24 @@ function bind(){
   if($("tipx"))$("tipx").onclick=()=>{mem.tipOff=true;save();render()};
   if($("bkn"))$("bkn").onclick=()=>{tab="bak";render();window.scrollTo(0,0)};
   if($("snz"))$("snz").onclick=()=>{mem.snooze=today();save();render()};
-  if($("bb"))$("bb").onclick=()=>{const w=$("bw").value.trim(),a=parseFloat($("ba").value),acc=$("bacc").value,d=$("bd").value,r=$("br").value;
-    if(!w)return setMsg("Who did you borrow from?");if(!isFinite(a)||a<=0)return setMsg("Enter an amount.");if(!acc)return setMsg("Add an account first (Accounts tab) to receive the money.");if(!d)return setMsg("Pick the date.");
-    lastAcc=acc;mem.tx.push({id:Date.now(),date:d,type:"b",acc,to:"",cat:w,amt:a,note:"",loan:"L"+Date.now(),remind:r});save();msg="Recorded. "+fmt(a)+" added to "+acc+(r?"; reminders start "+r+".":".");render()};
-  if($("rb"))$("rb").onclick=()=>{const id=$("rl").value,l=loans().find(x=>x.id===id),acc=$("racc").value,d=$("rd").value;let a=parseFloat($("ra").value);
-    if(!l)return;if(isNaN(a))a=l.out;if(a<=0)return setMsg("Enter an amount.");if(a>l.out+0.005)return setMsg("That's more than the "+fmt(l.out)+" still owed.");if(!acc)return setMsg("Pick the account you paid from.");if(!d)return setMsg("Pick the date.");
-    lastAcc=acc;mem.tx.push({id:Date.now(),date:d,type:"r",acc,to:"",cat:l.who,amt:a,note:"",loan:id});save();msg=a>=l.out-0.005?"Cleared! "+l.who+" is fully repaid.":"Recorded. "+fmt(l.out-a)+" still owed to "+l.who+".";render()};
+  document.querySelectorAll("[data-q]").forEach(b=>b.onclick=()=>{debtDir=b.dataset.q;msg="";render()});
+  if($("bb"))$("bb").onclick=()=>{const k=debtDir,B=k==="b",w=$("bw").value.trim(),a=parseFloat($("ba").value),acc=$("bacc").value,d=$("bd").value,r=$("br").value;
+    if(!w)return setMsg(B?"Who did you borrow from?":"Who did you lend to?");if(!isFinite(a)||a<=0)return setMsg("Enter an amount.");if(!acc)return setMsg("Add an account first (Accounts tab).");if(!d)return setMsg("Pick the date.");
+    lastAcc=acc;mem.tx.push({id:Date.now(),date:d,type:k,acc,to:"",cat:w,amt:a,note:"",loan:"L"+Date.now(),remind:r});save();msg="Recorded. "+fmt(a)+(B?" added to ":" taken from ")+acc+(r?"; reminders start "+r+".":".");render()};
+  if($("rb"))$("rb").onclick=()=>{const k=debtDir,B=k==="b",id=$("rl").value,l=loans(k).find(x=>x.id===id),acc=$("racc").value,d=$("rd").value;let a=parseFloat($("ra").value);
+    if(!l)return;if(isNaN(a))a=l.out;if(a<=0)return setMsg("Enter an amount.");if(a>l.out+0.005)return setMsg("That's more than the "+fmt(l.out)+" still outstanding.");if(!acc)return setMsg("Pick the account.");if(!d)return setMsg("Pick the date.");
+    lastAcc=acc;mem.tx.push({id:Date.now(),date:d,type:B?"r":"c",acc,to:"",cat:l.who,amt:a,note:"",loan:id});save();msg=a>=l.out-0.005?"Cleared! "+l.who+(B?" is fully repaid.":" has paid everything back."):"Recorded. "+fmt(l.out-a)+" still outstanding with "+l.who+".";render()};
+  document.querySelectorAll("[data-ea]").forEach(b=>b.onclick=()=>{edit={k:"acc",name:b.dataset.ea};editMsg="";render()});
+  document.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{const v=b.dataset.c;edit={k:"cat",t:v[0],name:v.slice(2)};editMsg="";render()});
+  document.querySelectorAll("[data-cd]").forEach(b=>b.onclick=()=>{const v=b.dataset.cd,t=v[0],n=v.slice(2),u=mem.tx.filter(x=>x.type===t&&x.cat===n).length;
+    if(u){delC=null;msg="'"+n+"' is used by "+u+" entries. Rename it to another category to merge them.";return render()}
+    if(delC===v){const L=t==="i"?mem.icats:mem.cats;L.splice(L.indexOf(n),1);delC=null;msg="";save()}else delC=v;render()});
+  document.querySelectorAll("[data-x]").forEach(b=>b.onclick=()=>{if(b.dataset.x==="cancel"){edit=null;editMsg="";return render()}saveEdit()});
+  const hf=(id,fn)=>{if($(id))$(id)[id==="hq"?"oninput":"onchange"]=function(){fn(this.value);$("hlist").innerHTML=histList();bindHist()}};
+  hf("hq",v=>hq=v);hf("hm",v=>hm=v);hf("ha",v=>ha=v);hf("hc",v=>hc=v);
+  if($("yya"))$("yya").onchange=function(){yA=+this.value;render()};
+  if($("yyb"))$("yyb").onchange=function(){yB=+this.value;render()};
+  if($("yys"))$("yys").onchange=function(){ySame=this.value==="1";render()};
   if($("exp"))$("exp").onclick=async()=>{const csv=toCSV(),name="my-money-"+today()+".csv";
     try{const f=new File([csv],name,{type:"text/csv"});if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:name});mem.last=today();save();return setMsg("Backup shared. Choose Save to Files or Google Drive.")}}catch(e){if(e&&e.name==="AbortError")return setMsg("Cancelled.")}
     try{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download=name;document.body.appendChild(a);a.click();a.remove();mem.last=today();save();setMsg("Backup downloaded. Find it in the Files app.")}catch(e){setMsg("Could not save the file. Try 'Copy CSV to clipboard'.")}};
